@@ -276,21 +276,13 @@ Format like this:
     # ============================================================
     # DISPLAY RESULTS
     # ============================================================
-    print("\n" + "="*70)
-    print("COMPLETE DEVOTION WORKFLOW SUMMARY")
-    print("="*70)
-    
-    print("\n[1] TODAY'S DEVOTION SUMMARY")
-    print("-" * 70)
-    safe_print(devotion_summary)
-    
-    print("\n[2] YOUR REFLECTION & AFFIRMATION")
+    print("\n[1] YOUR REFLECTION & AFFIRMATION")
     print("-" * 70)
     print("Your Reflection:")
     print(reflections_text)
     print("\n" + combined_text)
     
-    print("\n[3] WORSHIP SONGS")
+    print("\n[2] WORSHIP SONGS")
     print("-" * 70)
     safe_print(worship_text)
     
