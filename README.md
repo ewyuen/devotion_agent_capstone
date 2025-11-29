@@ -23,17 +23,23 @@ devotion_agent_capstone/
 
 ## Getting Started
 
-1. Install required dependencies:
+1. Create a `.env` file in the project root directory with your Gemini API key:
+   ```
+   GEMINI_API_KEY=your_actual_api_key_here
+   ```
+   You can get your API key from [Google AI Studio](https://ai.google.dev)
+
+2. Install required dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Run the agent:
+3. Run the agent:
    ```bash
-   python devotion_agents.py
+   python DevotionAgent.py
    ```
 
-3. Or explore interactively:
+4. Or explore interactively:
    ```bash
    jupyter notebook DevotionAgent.ipynb
    ```
