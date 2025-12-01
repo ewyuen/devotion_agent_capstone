@@ -6,6 +6,16 @@ Provides utilities for retrieving and formatting Bible devotion passages.
 import xml.etree.ElementTree as ET
 from typing import List, Dict
 from datetime import datetime
+import os
+import logging
+
+try:
+    import googleapiclient.discovery
+    YOUTUBE_AVAILABLE = True
+except ImportError:
+    YOUTUBE_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 def get_daily_devotion(xml_file: str, day: int) -> List[Dict[str, str]]:
@@ -223,6 +233,74 @@ def format_devotions_list(devotions: List[Dict[str, str]]) -> str:
         devotion_text += f"\n{devotion_type}: {formatted}\n"
     
     return devotion_text
+
+
+# ============================================================
+# YOUTUBE SEARCH TOOL
+# ============================================================
+
+def search_worship_songs(query: str, max_results: int = 5) -> List[Dict]:
+    """
+    Search YouTube for worship songs using the YouTube Data API.
+    
+    Args:
+        query: Search query for worship songs
+        max_results: Maximum number of results to return (default: 5)
+        
+    Returns:
+        List of dictionaries containing:
+        - title: Song title
+        - channel: Artist/Channel name
+        - video_id: YouTube video ID
+        - url: Direct YouTube link
+    """
+    if not YOUTUBE_AVAILABLE:
+        logger.error("YouTube API client not available")
+        return [{"error": "YouTube API client not installed. Run: pip install google-api-python-client"}]
+    
+    try:
+        youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+        if not youtube_api_key:
+            logger.warning("YOUTUBE_API_KEY not configured in .env file")
+            return [{"error": "YOUTUBE_API_KEY not configured in .env file"}]
+        
+        logger.info(f"Searching YouTube for: {query}")
+        
+        # Build YouTube API client
+        youtube = googleapiclient.discovery.build(
+            "youtube", "v3", developerKey=youtube_api_key
+        )
+        
+        # Execute search request
+        request = youtube.search().list(
+            q=query,
+            part="snippet",
+            type="video",
+            maxResults=max_results,
+            order="relevance",
+            videoCategoryId="10"  # Music category
+        )
+        
+        response = request.execute()
+        
+        # Parse results
+        results = []
+        for item in response.get("items", []):
+            result = {
+                "title": item["snippet"]["title"],
+                "channel": item["snippet"]["channelTitle"],
+                "video_id": item["id"]["videoId"],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            }
+            results.append(result)
+            logger.debug(f"Found: {result['title']} by {result['channel']}")
+        
+        logger.info(f"YouTube search returned {len(results)} results for query: {query}")
+        return results
+    
+    except Exception as e:
+        logger.error(f"YouTube search failed: {str(e)}")
+        return [{"error": f"YouTube search failed: {str(e)}"}]
 
 
 # ============================================================

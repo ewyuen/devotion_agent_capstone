@@ -12,6 +12,17 @@ from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
 from devotion_tools import get_today_devotion
 import os
+import logging
+from typing import List, Dict
+
+try:
+    import googleapiclient.discovery
+    YOUTUBE_AVAILABLE = True
+except ImportError:
+    YOUTUBE_AVAILABLE = False
+    logging.warning("YouTube API client not installed. Install with: pip install google-api-python-client")
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # DEVOTION SUMMARY AGENT
@@ -78,6 +89,67 @@ user_input_runner = InMemoryRunner(
 
 
 # ============================================================
+# YOUTUBE SEARCH TOOL
+# ============================================================
+
+def search_worship_songs(query: str, max_results: int = 5) -> List[Dict]:
+    """
+    Search YouTube for worship songs using the YouTube Data API.
+    
+    Args:
+        query: Search query for worship songs
+        max_results: Maximum number of results to return
+        
+    Returns:
+        List of dictionaries containing song title, artist, and YouTube URL
+    """
+    if not YOUTUBE_AVAILABLE:
+        logger.error("YouTube API client not available")
+        return [{"error": "YouTube API client not installed. Run: pip install google-api-python-client"}]
+    
+    try:
+        youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+        if not youtube_api_key:
+            logger.warning("YOUTUBE_API_KEY not configured in .env file")
+            return [{"error": "YOUTUBE_API_KEY not configured in .env file"}]
+        
+        logger.info(f"Searching YouTube for: {query}")
+        
+        youtube = googleapiclient.discovery.build(
+            "youtube", "v3", developerKey=youtube_api_key
+        )
+        
+        request = youtube.search().list(
+            q=query,
+            part="snippet",
+            type="video",
+            maxResults=max_results,
+            order="relevance",
+            videoCategoryId="10"  # Music category
+        )
+        
+        response = request.execute()
+        
+        results = []
+        for item in response.get("items", []):
+            result = {
+                "title": item["snippet"]["title"],
+                "channel": item["snippet"]["channelTitle"],
+                "video_id": item["id"]["videoId"],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            }
+            results.append(result)
+            logger.debug(f"Found: {result['title']} by {result['channel']}")
+        
+        logger.info(f"YouTube search returned {len(results)} results")
+        return results
+    
+    except Exception as e:
+        logger.error(f"YouTube search failed: {str(e)}")
+        return [{"error": f"YouTube search failed: {str(e)}"}]
+
+
+# ============================================================
 # PRAYER GENERATOR AGENT
 # ============================================================
 
@@ -106,91 +178,38 @@ prayer_runner = InMemoryRunner(
 
 
 # ============================================================
-# WORSHIP SONG AGENT (Fallback: No MCP in Jupyter)
+# WORSHIP SONG AGENT (With YouTube API Search)
 # ============================================================
-# Note: MCP tools don't work in Jupyter notebooks on Windows due to subprocess issues.
-# Using fallback approach with curated worship song recommendations instead.
 
 worship_song_agent = LlmAgent(
     model="gemini-2.0-flash",
     name="worship_song_agent",
-    tools=[],  # No MCP tools available in Jupyter environment
+    tools=[search_worship_songs],  # Add YouTube search tool
     instruction="""You are a worship music specialist. Based on the spiritual themes and emotional tone from today's devotion and prayer, you will:
 
 1. Identify 3-5 key spiritual themes from the devotion (e.g., faith, peace, hope, grace, strength, surrender, praise, thanksgiving, redemption, guidance, healing)
-2. Recommend 5-7 appropriate Christian worship songs that match these themes
-3. For each song, provide the title, artist name, the spiritual theme it addresses, AND a clickable link to the song
+2. Use the search_worship_songs() function to find 5-7 appropriate Christian worship songs that match these themes
+3. For each song found, provide the title, artist/channel name, the spiritual theme it addresses, AND the direct YouTube link
 
-Here are curated Christian worship songs with their search-optimized links:
+Call search_worship_songs() with queries like:
+- "Christian worship songs about faith"
+- "worship songs about peace"
+- "gospel worship music hope"
+- "contemporary Christian worship"
+- etc.
 
-1. Amazing Grace - Various Artists
-   Theme: grace, redemption, faith
-   🎵 https://www.youtube.com/results?search_query=Amazing+Grace+Christian+worship
-
-2. Great is Thy Faithfulness - Thomas Chisholm & William Bradbury
-   Theme: faithfulness, hope, gratitude
-   🎵 https://www.youtube.com/results?search_query=Great+is+Thy+Faithfulness+Christian+hymn
-
-3. Jesus Loves Me - Various Artists
-   Theme: love, faith, peace
-   🎵 https://www.youtube.com/results?search_query=Jesus+Loves+Me+Christian+worship+song
-
-4. How Great Thou Art - Carl Boberg
-   Theme: praise, God's greatness, worship
-   🎵 https://www.youtube.com/results?search_query=How+Great+Thou+Art+Christian+hymn
-
-5. What A Wonderful Savior - Eliza Edmunds Hewitt
-   Theme: gratitude, praise, redemption
-   🎵 https://www.youtube.com/results?search_query=What+A+Wonderful+Savior+Christian+hymn
-
-6. It Is Well With My Soul - Horatio Spafford
-   Theme: peace, trust, hope
-   🎵 https://www.youtube.com/results?search_query=It+Is+Well+With+My+Soul+Christian+hymn
-
-7. Jesus Christ Is Risen Today - Various Artists
-   Theme: resurrection, triumph, victory, joy
-   🎵 https://www.youtube.com/results?search_query=Jesus+Christ+Is+Risen+Today+Christian+hymn
-
-8. O Love That Wilt Not Let Me Go - George Matheson
-   Theme: love, commitment, surrender
-   🎵 https://www.youtube.com/results?search_query=O+Love+That+Wilt+Not+Let+Me+Go+hymn
-
-9. The Old Rugged Cross - George Bennard
-   Theme: redemption, sacrifice, faith
-   🎵 https://www.youtube.com/results?search_query=The+Old+Rugged+Cross+Christian+hymn
-
-10. We Have An Anchor - Priscilla Jane Owens
-    Theme: hope, stability, trust
-    🎵 https://www.youtube.com/results?search_query=We+Have+An+Anchor+Christian+hymn
-
-11. Jesus Never Fails - Everett Hawkins
-    Theme: trust, faithfulness, certainty
-    🎵 https://www.youtube.com/results?search_query=Jesus+Never+Fails+gospel+song
-
-12. Because He Lives - Bill & Gloria Gaither
-    Theme: hope, victory, assurance
-    🎵 https://www.youtube.com/results?search_query=Because+He+Lives+Gaither+gospel
-
-13. Blessed Assurance - Fanny Crosby
-    Theme: assurance, faith, joy
-    🎵 https://www.youtube.com/results?search_query=Blessed+Assurance+Christian+hymn
-
-14. Jesus Paid It All - Marjorie Hardin & Elvina Hall
-    Theme: redemption, forgiveness, grace
-    🎵 https://www.youtube.com/results?search_query=Jesus+Paid+It+All+Christian+hymn
-
-Format your response EXACTLY like this example:
+Format your response EXACTLY like this:
 
 **RECOMMENDED WORSHIP SONGS FOR TODAY**
 
-Based on today's devotion themes, here are songs selected for your spiritual journey:
+Based on today's devotion themes of [THEMES], here are songs selected for your spiritual journey:
 
-🎵 **[Song Title]** - [Artist]
+🎵 **[Song Title]** - [Artist/Channel]
    Theme: [Primary Theme]
-   Listen: https://www.youtube.com/results?search_query=[Song+Title]+[Artist]+worship
+   Listen: [YouTube URL]
 
-Provide 5-7 song recommendations, each with a working YouTube search URL. Make sure each URL has the song title and artist properly encoded with + signs between words.""",
-    description="Agent that recommends Christian worship songs based on devotion themes with YouTube links"
+Provide 5-7 song recommendations with direct YouTube links from the search results.""",
+    description="Agent that recommends Christian worship songs using YouTube API search"
 )
 
 # Create a worship song runner
